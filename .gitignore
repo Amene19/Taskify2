@@ -1,0 +1,60 @@
+# IDEs and Editors
+.idea/
+.vscode/
+*.iml
+*.swp
+*.swo
+*~
+
+# OS Files
+.DS_Store
+Thumbs.db
+*.log
+
+# Environment Variables
+.env
+.env.local
+.env.*.local
+*.env
+
+# Backend (Java/Maven)
+taskify-backend/target/
+taskify-backend/.idea/
+taskify-backend/*.iml
+taskify-backend/.env
+
+# Frontend (React/Node)
+taskify-frontend/node_modules/
+taskify-frontend/build/
+taskify-frontend/dist/
+taskify-frontend/.env.local
+taskify-frontend/.env.production.local
+taskify-frontend/.env.development.local
+taskify-frontend/npm-debug.log*
+taskify-frontend/yarn-debug.log*
+taskify-frontend/yarn-error.log*
+
+# Test Coverage
+taskify-frontend/coverage/
+taskify-backend/coverage/
+
+# Logs
+*.log
+logs/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Temporary Files
+*.tmp
+*.temp
+.cache/
+
+# Build Outputs
+dist/
+build/
+out/
+
+# Package Manager
+package-lock.json.bak
+yarn.lock.bak

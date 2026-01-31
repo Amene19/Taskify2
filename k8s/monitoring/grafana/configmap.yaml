@@ -1,0 +1,86 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-datasources
+  namespace: taskify
+data:
+  datasources.yaml: |
+    apiVersion: 1
+    datasources:
+    - name: Prometheus
+      type: prometheus
+      access: proxy
+      url: http://prometheus:9090
+      isDefault: true
+      editable: true
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-dashboards-config
+  namespace: taskify
+data:
+  dashboards.yaml: |
+    apiVersion: 1
+    providers:
+    - name: 'default'
+      orgId: 1
+      folder: ''
+      type: file
+      disableDeletion: false
+      updateIntervalSeconds: 10
+      allowUiUpdates: true
+      options:
+        path: /var/lib/grafana/dashboards
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-dashboards
+  namespace: taskify
+data:
+  taskify-dashboard.json: |
+    {
+      "dashboard": {
+        "title": "Taskify Application Metrics",
+        "tags": ["taskify", "spring-boot"],
+        "timezone": "browser",
+        "panels": [
+          {
+            "id": 1,
+            "title": "HTTP Request Rate",
+            "type": "graph",
+            "targets": [
+              {
+                "expr": "rate(http_server_requests_seconds_count{application=\"taskify-backend\"}[5m])",
+                "legendFormat": "{{method}} {{uri}}"
+              }
+            ]
+          },
+          {
+            "id": 2,
+            "title": "JVM Heap Memory",
+            "type": "graph",
+            "targets": [
+              {
+                "expr": "jvm_memory_used_bytes{application=\"taskify-backend\",area=\"heap\"}"
+              }
+            ]
+          },
+          {
+            "id": 3,
+            "title": "Tasks Created",
+            "type": "stat",
+            "targets": [{"expr": "taskify_tasks_created_total"}]
+          },
+          {
+            "id": 4,
+            "title": "Tasks Completed",
+            "type": "stat",
+            "targets": [{"expr": "taskify_tasks_completed_total"}]
+          }
+        ]
+      }
+    }

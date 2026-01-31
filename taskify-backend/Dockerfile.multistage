@@ -1,0 +1,40 @@
+# Dockerfile Multi-stage optimisé (TP Partie 6)
+# Cette version utilise une image Alpine plus légère pour le runtime
+
+# Étape 1 : Build
+FROM maven:3.9-eclipse-temurin-17 AS builder
+
+WORKDIR /build
+
+# Copier pom.xml et télécharger les dépendances (cache layer)
+COPY pom.xml .
+RUN mvn dependency:go-offline -B
+
+# Copier le code source
+COPY src ./src
+
+# Build de l'application
+RUN mvn clean package -DskipTests
+
+# Étape 2 : Runtime (image Alpine optimisée)
+FROM eclipse-temurin:17-jre-alpine
+
+# Métadonnées
+LABEL maintainer="taskify-team@example.com"
+LABEL version="1.0-slim"
+LABEL description="Application Taskify Backend - Version optimisée Alpine"
+
+WORKDIR /app
+
+# Copier le JAR depuis l'étape builder
+COPY --from=builder /build/target/*.jar app.jar
+
+# Port exposé
+EXPOSE 8080
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
+    CMD wget --no-verbose --tries=1 --spider http://localhost:8080/actuator/health || exit 1
+
+# Commande de démarrage
+ENTRYPOINT ["java", "-jar", "app.jar"]

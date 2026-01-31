@@ -1,0 +1,38 @@
+# Git
+.git
+.gitignore
+
+# Documentation
+*.md
+docs/
+
+# Maven wrapper
+.mvn/
+mvnw
+mvnw.cmd
+
+# Build artifacts we don't need
+target/*.jar.original
+target/surefire-reports/
+target/test-classes/
+target/maven-status/
+target/generated-sources/
+target/generated-test-sources/
+target/site/
+
+# IDE files
+.idea/
+*.iml
+.vscode/
+*.swp
+
+# Environment files (security)
+.env
+.env.*
+
+# CI/CD configuration
+Jenkinsfile
+Dockerfile.multistage
+
+# Test files (not needed in Docker build)
+src/test/

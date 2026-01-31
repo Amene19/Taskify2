@@ -1,0 +1,211 @@
+pipeline {
+    agent any
+
+    tools {
+        nodejs 'Node-18'
+    }
+
+    options {
+        timestamps()
+        timeout(time: 1, unit: 'HOURS')
+        buildDiscarder(logRotator(numToKeepStr: '10'))
+    }
+
+    triggers {
+        githubPush()  // Trigger on GitHub webhook push events
+        // Fallback polling to keep builds running even if webhook breaks
+        pollSCM('H/2 * * * *')
+    }
+
+    environment {
+        APP_NAME = 'taskify-frontend'
+        DOCKER_REGISTRY = 'docker.io'
+        DOCKER_IMAGE_NAME = "${DOCKER_REGISTRY}/${DOCKER_USERNAME}/${APP_NAME}"
+        REACT_APP_API_URL = 'http://localhost:8080/api'
+    }
+
+    stages {
+        stage('Detect OS') {
+            steps {
+                script {
+                    // Detect if running on Windows or Unix
+                    if (isUnix()) {
+                        env.IS_UNIX = 'true'
+                        echo "Detected Unix/Linux environment"
+                    } else {
+                        env.IS_UNIX = 'false'
+                        echo "Detected Windows environment"
+                    }
+                }
+            }
+        }
+
+        stage('Checkout') {
+            steps {
+                script {
+                    echo "Checking out source code from SCM..."
+                }
+                checkout scm
+            }
+        }
+
+        stage('Install Dependencies') {
+            steps {
+                script {
+                    echo "Installing npm dependencies..."
+                    runCommand('npm ci')
+                    echo "Dependencies installed successfully"
+                }
+            }
+        }
+
+        stage('Build Application') {
+            steps {
+                script {
+                    echo "Building React application for production..."
+                    runCommand('npm run build')
+                    echo "Build completed successfully"
+                }
+            }
+            post {
+                success {
+                    archiveArtifacts artifacts: 'build/**/*', fingerprint: true
+                    echo "Build artifacts archived"
+                }
+            }
+        }
+
+        stage('Docker Preflight') {
+            steps {
+                script {
+                    echo "Checking Docker availability..."
+
+                    def dockerAvailable = false
+
+                    if (env.IS_UNIX == 'true') {
+                        // Unix/Linux - check for docker socket and CLI
+                        def hasSock = fileExists('/var/run/docker.sock')
+                        def hasDocker = (sh(script: 'command -v docker >/dev/null 2>&1', returnStatus: true) == 0)
+
+                        if (!hasDocker) {
+                            echo "Docker CLI not found in Jenkins agent."
+                        }
+                        if (!hasSock) {
+                            echo "Docker socket not mounted at /var/run/docker.sock."
+                        }
+                        dockerAvailable = hasDocker && hasSock
+                    } else {
+                        // Windows - check if docker command exists
+                        def hasDocker = (bat(script: '@docker --version >nul 2>&1', returnStatus: true) == 0)
+
+                        if (!hasDocker) {
+                            echo "Docker CLI not found in Jenkins agent."
+                        }
+                        dockerAvailable = hasDocker
+                    }
+
+                    if (dockerAvailable) {
+                        runCommand('docker version')
+                        echo "Docker is available; enabling Docker stages."
+                        env.DOCKER_AVAILABLE = 'true'
+                    } else {
+                        echo "To enable Docker build/push stages: ensure Docker is installed and accessible."
+                        env.DOCKER_AVAILABLE = 'false'
+                    }
+                }
+            }
+        }
+
+        stage('Build Docker Image') {
+            when {
+                environment name: 'DOCKER_AVAILABLE', value: 'true'
+            }
+            steps {
+                script {
+                    echo "Building Docker image..."
+                    runCommand("docker build --build-arg REACT_APP_API_URL=${REACT_APP_API_URL} -t ${APP_NAME}:${BUILD_NUMBER} .")
+                    runCommand("docker tag ${APP_NAME}:${BUILD_NUMBER} ${APP_NAME}:latest")
+                    echo "Docker image built: ${APP_NAME}:${BUILD_NUMBER}"
+                }
+            }
+        }
+
+        stage('Push to Registry') {
+            when {
+                allOf {
+                    environment name: 'DOCKER_AVAILABLE', value: 'true'
+                    branch 'master'
+                }
+            }
+            steps {
+                script {
+                    echo "Pushing Docker image to registry..."
+                    withCredentials([usernamePassword(
+                        credentialsId: 'dockerhub-credentials',
+                        usernameVariable: 'DOCKER_USER',
+                        passwordVariable: 'DOCKER_PASS'
+                    )]) {
+                        if (env.IS_UNIX == 'true') {
+                            sh 'echo $DOCKER_PASS | docker login -u $DOCKER_USER --password-stdin'
+                        } else {
+                            bat 'docker login -u %DOCKER_USER% -p %DOCKER_PASS%'
+                        }
+                        runCommand("docker tag ${APP_NAME}:${BUILD_NUMBER} ${DOCKER_USER}/${APP_NAME}:${BUILD_NUMBER}")
+                        runCommand("docker tag ${APP_NAME}:latest ${DOCKER_USER}/${APP_NAME}:latest")
+                        runCommand("docker push ${DOCKER_USER}/${APP_NAME}:${BUILD_NUMBER}")
+                        runCommand("docker push ${DOCKER_USER}/${APP_NAME}:latest")
+                        echo "Docker images pushed to Docker Hub"
+                    }
+                }
+            }
+        }
+    }
+
+    post {
+        always {
+            script {
+                echo "Cleaning up workspace..."
+                cleanWs()
+            }
+        }
+
+        success {
+            script {
+                echo "Pipeline execution SUCCESS!"
+                // Uncomment when Slack integration is configured
+                // slackSend(
+                //     channel: "#builds",
+                //     color: 'good',
+                //     message: "Build SUCCESS: ${APP_NAME} #${BUILD_NUMBER}\nBranch: ${GIT_BRANCH}"
+                // )
+            }
+        }
+
+        failure {
+            script {
+                echo "Pipeline execution FAILED!"
+                // Uncomment when Slack integration is configured
+                // slackSend(
+                //     channel: "#builds",
+                //     color: 'danger',
+                //     message: "Build FAILED: ${APP_NAME} #${BUILD_NUMBER}\nBranch: ${GIT_BRANCH}\nCheck console output: ${BUILD_URL}console"
+                // )
+            }
+        }
+
+        unstable {
+            script {
+                echo "Pipeline execution is UNSTABLE"
+            }
+        }
+    }
+}
+
+// Helper function to run commands cross-platform
+def runCommand(String command) {
+    if (env.IS_UNIX == 'true') {
+        sh command
+    } else {
+        bat command
+    }
+}
